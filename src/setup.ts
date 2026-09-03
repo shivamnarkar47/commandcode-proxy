@@ -311,8 +311,7 @@ async function main(): Promise<void> {
   }
 
   // 1. Ensure proxy dir exists and proxy.ts is in place
-  await Bun.write(path.join(PROXY_DIR, ".gitkeep"), ""); // ensure dir exists via write
-  const selfDir = path.dirname(new URL(import.meta.url).pathname);
+  const selfDir = import.meta.dirname || path.dirname(new URL(import.meta.url).pathname);
   const srcProxy = path.join(selfDir, "proxy.ts");
   if (existsSync(srcProxy) && srcProxy !== PROXY_FILE) {
     await Bun.write(PROXY_FILE, Bun.file(srcProxy));
