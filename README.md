@@ -62,6 +62,15 @@ Run with `bun` from PowerShell/CMD.
 
 Set `providers.commandcode.settings.baseURL` to `http://127.0.0.1:18731/v1`. Models carry explicit `modelID` (canonical id sent upstream as `params.model`).
 
+Two template files are included for reference:
+
+| File | Use when |
+|------|----------|
+| `opencode.json` | You want a plain JSON config (no comments) |
+| `opencode.jsonc` | You want a JSONC config with inline documentation |
+
+Copy the `providers.commandcode` block from either file into your `~/.config/opencode/opencode.json` (or `opencode.jsonc`), then restart OpenCode or press F5 to reload.
+
 ## Thinking / reasoning params
 
 The proxy passes `thinking` and `reasoning_effort` through to upstream (`params.thinking`, `params.reasoningEffort`). Different models support different thinking variants — pass them in your OpenAI request body:
