@@ -3,8 +3,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "bun run proxy.ts",
-    "dev": "bun --watch run proxy.ts",
+    "start": "bun run src/proxy.ts",
+    "dev": "bun --watch run src/proxy.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

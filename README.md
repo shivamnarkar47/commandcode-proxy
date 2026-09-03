@@ -13,13 +13,52 @@ OpenCode speaks OpenAI Chat Completions. CommandCode Go speaks `POST /alpha/gene
 
 Always streams upstream; buffers when downstream asks `stream:false`.
 
+## Install
+
+### Mac / Linux
+
+```sh
+curl -fsSL https://github.com/snarkar-aiq/commandcode-proxy/raw/main/install.sh | bash
+```
+
+Or manually:
+
+```sh
+git clone https://github.com/snarkar-aiq/commandcode-proxy.git ~/.config/opencode/commandcode-proxy
+cd ~/.config/opencode/commandcode-proxy
+bun install
+bun run src/setup.ts
+```
+
+### Windows
+
+```ps1
+irm https://github.com/snarkar-aiq/commandcode-proxy/raw/main/install.ps1 | iex
+```
+
+Or manually:
+
+```powershell
+git clone https://github.com/snarkar-aiq/commandcode-proxy.git $env:USERPROFILE\.config\opencode\commandcode-proxy
+cd $env:USERPROFILE\.config\opencode\commandcode-proxy
+bun install
+bun run src/setup.ts
+```
+
+### Uninstall
+
+```sh
+bun run src/setup.ts --uninstall
+```
+
 ## Run
+
+If you prefer to run without installing as a service:
 
 ```sh
 # No env needed if you already ran /connect (key in ~/.local/share/opencode/auth.json).
 # Key resolution order: COMMANDCODE_API_KEY env → Bearer header → auth.json.
-bun run proxy.ts --port 18731
-```
+bun run src/proxy.ts --port 18731
 
 ### Dev mode
 
@@ -30,7 +69,7 @@ bun --watch run proxy.ts --port 18731
 ### Install as a service
 
 ```sh
-bun run setup.ts
+bun run src/setup.ts
 ```
 
 This creates a systemd user service (Linux), launchd agent (macOS), or scheduled task (Windows) that starts the proxy on boot.
@@ -38,7 +77,7 @@ This creates a systemd user service (Linux), launchd agent (macOS), or scheduled
 To uninstall:
 
 ```sh
-bun run setup.ts --uninstall
+bun run src/setup.ts --uninstall
 ```
 
 ### Windows
@@ -129,13 +168,17 @@ Select at runtime with `provider/model#variant`, e.g. `commandcode/deepseek/deep
 
 ```
 commandcode-proxy/
+├── src/
+│   ├── proxy.ts          # Bun.serve server, routing, key resolution, streaming
+│   ├── translate.ts      # pure translation functions (no server)
+│   ├── types.ts          # wire protocol types (OpenAI + Alpha + NDJSON)
+│   └── setup.ts          # install/uninstall system service
+├── config/
+│   ├── opencode.json     # template: plain JSON config
+│   ├── opencode.jsonc    # template: documented JSONC config
+│   └── service.json      # systemd descriptor
 ├── package.json          # bun scripts, bun-types devDep
 ├── tsconfig.json         # strict, bundler resolution, bun-types
-├── types.ts              # wire protocol types (OpenAI + Alpha + NDJSON)
-├── translate.ts          # pure translation functions (no server)
-├── proxy.ts              # Bun.serve server, routing, key resolution, streaming
-├── setup.ts              # install/uninstall system service
-├── service.json          # systemd descriptor
 └── README.md
 ```
 
