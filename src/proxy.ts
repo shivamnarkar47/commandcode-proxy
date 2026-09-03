@@ -461,7 +461,7 @@ async function handleChatCompletions(req: Request): Promise<Response> {
 const server = Bun.serve({
   port: PORT,
   hostname: "127.0.0.1",
-  idleTimeout: 300, // 5 min for long-lived SSE streams
+  idleTimeout: 255, // max allowed by Bun; keeps SSE streams alive for long tool calls
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
     try {
