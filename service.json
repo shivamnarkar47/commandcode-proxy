@@ -1,0 +1,7 @@
+{
+  "name": "commandcode-proxy",
+  "description": "CommandCode Go local proxy for OpenCode",
+  "command": "bun",
+  "args": ["run", "${CONFIG_DIR}/commandcode-proxy/proxy.ts", "--port", "18731"],
+  "restart": true
+}

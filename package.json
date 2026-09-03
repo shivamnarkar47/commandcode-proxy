@@ -1,0 +1,13 @@
+{
+  "name": "commandcode-proxy",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run proxy.ts",
+    "dev": "bun --watch run proxy.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "bun-types": "^1.4.0"
+  }
+}
