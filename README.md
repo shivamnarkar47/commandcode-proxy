@@ -74,7 +74,7 @@ bun run src/proxy.ts --port 18731
 ### Dev mode
 
 ```sh
-bun --watch run proxy.ts --port 18731
+bun --watch run src/proxy.ts --port 18731
 ```
 
 ### Background run
@@ -212,6 +212,8 @@ commandcode-proxy/
 │   ├── start.ps1         # background wrapper (Windows, hidden window)
 │   └── uninstall.ts      # full removal (service + config + folder)
 ├── docs/
+│   ├── agents/           # agent skills config (issue tracker, triage labels, domain docs)
+│   ├── adr/              # architectural decision records
 │   ├── background-run.md # background-run options, runtime files, troubleshooting
 │   ├── smoke-tests.md    # test matrix + results
 │   ├── benchmarks.md     # method + numbers + reproduce commands
@@ -220,10 +222,16 @@ commandcode-proxy/
 │   ├── opencode.json     # template: plain JSON config
 │   ├── opencode.jsonc    # template: documented JSONC config
 │   └── service.json      # systemd descriptor
+├── AGENTS.md             # agent skills entry point (tracker, labels, domain docs)
+├── CONTEXT.md            # domain glossary + translation rules
 ├── package.json          # bun scripts, bun-types devDep
 ├── tsconfig.json         # strict, bundler resolution, bun-types
 └── README.md
 ```
+
+## Contributing
+
+Agent workflows are documented in [`AGENTS.md`](AGENTS.md): issues live in GitHub Issues, triage uses the five canonical labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`), and domain language lives in [`CONTEXT.md`](CONTEXT.md) with decisions in [`docs/adr/`](docs/adr/).
 
 ## License
 
