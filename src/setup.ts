@@ -5,7 +5,7 @@
 
 import os from "node:os";
 import path from "node:path";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 
 const IS_WIN = process.platform === "win32";
 const IS_MAC = process.platform === "darwin";
@@ -310,15 +310,21 @@ async function main(): Promise<void> {
     return;
   }
 
-  // 1. Ensure proxy dir exists and proxy.ts is in place
+  // 1. Ensure proxy dir exists and proxy sources are in place
+  // (proxy.ts imports ./translate.js, so all src files must be copied)
   const selfDir = import.meta.dirname || path.dirname(new URL(import.meta.url).pathname);
-  const srcProxy = path.join(selfDir, "proxy.ts");
-  if (existsSync(srcProxy) && srcProxy !== PROXY_FILE) {
-    await Bun.write(PROXY_FILE, Bun.file(srcProxy));
-    log(`copied proxy.ts to ${PROXY_FILE}`);
-  } else if (!existsSync(PROXY_FILE)) {
-    warn("proxy.ts not found — place it next to setup.ts first");
+  mkdirSync(PROXY_DIR, { recursive: true });
+  let copied = 0;
+  for (const f of ["proxy.ts", "translate.ts", "types.ts"]) {
+    const src = path.join(selfDir, f);
+    const dst = path.join(PROXY_DIR, f);
+    if (existsSync(src) && src !== dst) {
+      await Bun.write(dst, Bun.file(src));
+      copied++;
+    }
   }
+  if (copied > 0) log(`copied ${copied} src file(s) to ${PROXY_DIR}`);
+  else if (!existsSync(PROXY_FILE)) warn("proxy sources not found — place them next to setup.ts first");
 
   // 2. Check auth
   const hasKey = await checkAuth();
@@ -332,14 +338,32 @@ async function main(): Promise<void> {
   else if (IS_WIN) await installWindowsTask();
   else warn("unknown platform — service not installed, start manually: bun run proxy.ts --port 18731");
 
-  // 5. Verify
+  // 5. Verify — fall back to a background daemon so the proxy is live immediately
   await new Promise((r) => setTimeout(r, 1500));
   if (await isPortOpen(PORT)) {
     log(`proxy is live at ${PROXY_URL}`);
-    log("done. restart OpenCode or press F5 to reload config.");
   } else {
-    warn("proxy didn't come up — check logs");
+    warn("service didn't come up — starting background daemon instead");
+    try {
+      const proc = Bun.spawn({
+        cmd: [RUNTIME, "run", PROXY_FILE, "--port", PORT, "--daemon"],
+        cwd: PROXY_DIR,
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+      await proc.exited;
+    } catch (e) {
+      warn(`daemon fallback failed: ${(e as Error).message}`);
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+    if (await isPortOpen(PORT)) {
+      log(`proxy is live at ${PROXY_URL} (background daemon)`);
+    } else {
+      warn("proxy didn't come up — check logs");
+      return;
+    }
   }
+  log("done. restart OpenCode or press F5 to reload config.");
 }
 
 main().catch((e: Error) => {

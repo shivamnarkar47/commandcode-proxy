@@ -95,7 +95,7 @@ Shortcuts: `bun run daemon|status|stop|restart`. Wrapper scripts with `start|sto
 bun run src/setup.ts
 ```
 
-This creates a systemd user service (Linux), launchd agent (macOS), or scheduled task (Windows) that starts the proxy on boot.
+This creates a systemd user service (Linux), launchd agent (macOS), or scheduled task (Windows) that starts the proxy on boot — and starts it immediately. If the service fails to come up, setup falls back to a background daemon (`--daemon`), so the proxy is live on first go either way.
 
 To uninstall:
 

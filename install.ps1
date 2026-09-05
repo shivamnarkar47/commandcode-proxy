@@ -31,4 +31,4 @@ bun run src/setup.ts
 
 Write-Host ""
 Write-Host "Done. Restart OpenCode or press F5 to reload config." -ForegroundColor Green
-Write-Host "Proxy running on http://127.0.0.1:18731"
+Write-Host "Proxy started now on http://127.0.0.1:18731 (service, or background daemon if the service failed)."
