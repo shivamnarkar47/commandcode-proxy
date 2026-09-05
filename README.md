@@ -47,6 +47,16 @@ bun run src/setup.ts
 
 ### Uninstall
 
+Full removal (stops background processes, removes the boot service, strips the `commandcode` provider from `opencode.json(c)`, deletes this folder):
+
+```sh
+bun run uninstall
+```
+
+Flags: `--yes` (skip confirm), `--dry-run` (preview), `--keep-config`, `--dir <path>`. Details: [`docs/uninstall.md`](docs/uninstall.md).
+
+Service-only removal (keeps folder + config):
+
 ```sh
 bun run src/setup.ts --uninstall
 ```
@@ -59,12 +69,25 @@ If you prefer to run without installing as a service:
 # No env needed if you already ran /connect (key in ~/.local/share/opencode/auth.json).
 # Key resolution order: COMMANDCODE_API_KEY env → Bearer header → auth.json.
 bun run src/proxy.ts --port 18731
+```
 
 ### Dev mode
 
 ```sh
 bun --watch run proxy.ts --port 18731
 ```
+
+### Background run
+
+Run detached (log + PID file next to `proxy.ts`):
+
+```sh
+bun run src/proxy.ts --daemon   # start in background
+bun run src/proxy.ts --status   # running (PID xxxx) / not running
+bun run src/proxy.ts --stop     # stop it
+```
+
+Shortcuts: `bun run daemon|status|stop|restart`. Wrapper scripts with `start|stop|status|restart`: `scripts/start.sh` (Linux/macOS, nohup) and `scripts\start.ps1` (Windows, hidden window). Double-start is refused and stale PID files self-heal. Details: [`docs/background-run.md`](docs/background-run.md).
 
 ### Install as a service
 
@@ -164,15 +187,35 @@ To select thinking variants from OpenCode's UI (`/models` → pick variant), def
 
 Select at runtime with `provider/model#variant`, e.g. `commandcode/deepseek/deepseek-v4-flash#max`.
 
+## Benchmarks
+
+Local proxy overhead (2026-09-05, Linux, Bun 1.4.0, localhost):
+
+| Metric | Value |
+|--------|-------|
+| Cold start → first healthy `/health` | ~47 ms |
+| `GET /health` latency, p50 / p95 | 246 µs / 752 µs (n=100, in-process) |
+
+No end-to-end generation benchmarks yet (needs an upstream API key). Method, reproduce commands, and limitations: [`docs/benchmarks.md`](docs/benchmarks.md). Smoke-test matrix: [`docs/smoke-tests.md`](docs/smoke-tests.md).
+
 ## Project structure
 
 ```
 commandcode-proxy/
 ├── src/
-│   ├── proxy.ts          # Bun.serve server, routing, key resolution, streaming
+│   ├── proxy.ts          # Bun.serve server, routing, key resolution, streaming, --daemon/--stop/--status
 │   ├── translate.ts      # pure translation functions (no server)
 │   ├── types.ts          # wire protocol types (OpenAI + Alpha + NDJSON)
 │   └── setup.ts          # install/uninstall system service
+├── scripts/
+│   ├── start.sh          # background wrapper (Linux/macOS, nohup)
+│   ├── start.ps1         # background wrapper (Windows, hidden window)
+│   └── uninstall.ts      # full removal (service + config + folder)
+├── docs/
+│   ├── background-run.md # background-run options, runtime files, troubleshooting
+│   ├── smoke-tests.md    # test matrix + results
+│   ├── benchmarks.md     # method + numbers + reproduce commands
+│   └── uninstall.md      # uninstall flags + behavior
 ├── config/
 │   ├── opencode.json     # template: plain JSON config
 │   ├── opencode.jsonc    # template: documented JSONC config

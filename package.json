@@ -5,6 +5,11 @@
   "scripts": {
     "start": "bun run src/proxy.ts",
     "dev": "bun --watch run src/proxy.ts",
+    "daemon": "bun run src/proxy.ts --daemon",
+    "stop": "bun run src/proxy.ts --stop",
+    "restart": "bun run src/proxy.ts --stop && bun run src/proxy.ts --daemon",
+    "status": "bun run src/proxy.ts --status",
+    "uninstall": "bun run scripts/uninstall.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

@@ -6,6 +6,7 @@
 
 import os from "node:os";
 import path from "node:path";
+import { existsSync, rmSync } from "node:fs";
 import {
   openaiMessagesToAlpha,
   openaiToolsToAlpha,
@@ -21,6 +22,68 @@ import type {
   NdJsonEvent,
   SSEDelta,
 } from "./types.js";
+
+// --- daemon/stop/status handling ---
+const PROJECT_ROOT = path.resolve(import.meta.dirname, "..");
+const PID_FILE = path.join(PROJECT_ROOT, ".commandcode-proxy.pid");
+const LOG_FILE = path.join(PROJECT_ROOT, "commandcode-proxy.log");
+
+if (process.argv.includes("--daemon")) {
+  if (existsSync(PID_FILE)) {
+    try {
+      const oldPid = parseInt(await Bun.file(PID_FILE).text(), 10);
+      process.kill(oldPid, 0);
+      console.log(`already running (PID ${oldPid})`);
+      process.exit(0);
+    } catch {
+      rmSync(PID_FILE, { force: true });
+    }
+  }
+  const args = process.argv.slice(2).filter((a) => a !== "--daemon");
+  const proc = Bun.spawn({
+    cmd: [process.execPath, import.meta.filename, ...args],
+    cwd: PROJECT_ROOT,
+    stdout: Bun.file(LOG_FILE),
+    stderr: Bun.file(LOG_FILE),
+    detached: true,
+  });
+  await Bun.write(PID_FILE, String(proc.pid));
+  proc.unref();
+  console.log(`daemon started (PID ${proc.pid}), log: ${LOG_FILE}`);
+  process.exit(0);
+}
+
+if (process.argv.includes("--stop")) {
+  if (existsSync(PID_FILE)) {
+    const pid = parseInt(await Bun.file(PID_FILE).text(), 10);
+    try {
+      process.kill(pid, "SIGTERM");
+      console.log(`stopped (PID ${pid})`);
+    } catch {
+      console.log(`stale PID file (PID ${pid} not responding)`);
+    }
+    rmSync(PID_FILE, { force: true });
+  } else {
+    console.log("not running (no PID file)");
+  }
+  process.exit(0);
+}
+
+if (process.argv.includes("--status")) {
+  if (existsSync(PID_FILE)) {
+    const pid = parseInt(await Bun.file(PID_FILE).text(), 10);
+    try {
+      process.kill(pid, 0);
+      console.log(`running (PID ${pid})`);
+    } catch {
+      console.log(`stale PID file (PID ${pid} not responding)`);
+      rmSync(PID_FILE, { force: true });
+    }
+  } else {
+    console.log("not running");
+  }
+  process.exit(0);
+}
 
 const PORT = parseInt(
   process.argv.includes("--port")
@@ -228,15 +291,22 @@ async function handleChatCompletions(req: Request): Promise<Response> {
     const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
     const writer = writable.getWriter();
     const encoder = new TextEncoder();
+    let streamClosed = false;
 
     sseWritable.write = (s: string) => {
-      void writer.write(encoder.encode(s));
+      if (streamClosed) return;
+      void writer.write(encoder.encode(s)).catch(() => {
+        // Client disconnected — stop reading upstream
+        streamClosed = true;
+        void upstream.body?.cancel().catch(() => {});
+      });
     };
 
     // Start processing in background
     void (async () => {
       try {
         for await (const line of readNdjsonLines(upstream.body!)) {
+          if (streamClosed) break;
           let ev: NdJsonEvent;
           try {
             ev = JSON.parse(line) as NdJsonEvent;
@@ -312,7 +382,7 @@ async function handleChatCompletions(req: Request): Promise<Response> {
             else if ("finish_reason" in ev && ev.finish_reason) finishReason = mapFinish(ev.finish_reason);
             if ("usage" in ev && ev.usage) {
               usage = parseAlphaUsage(ev.usage);
-            } else if ("totalUsage" in ev && "totalUsage" in ev && ev.totalUsage) {
+            } else if ("totalUsage" in ev && ev.totalUsage) {
               const u = ev.totalUsage;
               usage = {
                 prompt_tokens: u.inputTokens ?? 0,
@@ -330,24 +400,42 @@ async function handleChatCompletions(req: Request): Promise<Response> {
           // ignore: start, start-step, reasoning-start/end, text-start/end, tool-input-end
         }
       } catch (e) {
-        const delta: SSEDelta = { content: `\n\n[proxy error: ${(e as Error).message}]` };
-        writeSSE(buildSSEChunk(chatId, created, model, delta, "stop"));
-        sseWritable.write(`data: [DONE]\n\n`);
-        await writer.close();
-        return;
+        if (!streamClosed) {
+          try {
+            const delta: SSEDelta = { content: `\n\n[proxy error: ${(e as Error).message}]` };
+            writeSSE(buildSSEChunk(chatId, created, model, delta, "stop"));
+            sseWritable.write(`data: [DONE]\n\n`);
+          } catch {
+            // Client disconnected while writing error
+          }
+        }
       }
 
-      const tDone = Date.now();
-      const outTokens = usage?.completion_tokens ?? 0;
-      const genMs = Math.max(tDone - (tFirst || tHeaders), 1);
-      const tps = ((outTokens / (genMs / 1000))).toFixed(1);
-      console.log(
-        `[${model}] headers=${tHeaders - t0}ms first-token=${tFirst ? tFirst - t0 : -1}ms total=${tDone - t0}ms finish=${finishReason} out=${outTokens}tok ${tps}tok/s`,
-      );
+      if (streamClosed) {
+        // Client gone — just log and clean up
+        console.log(`[${model}] client disconnected, aborting upstream`);
+      } else {
+        const tDone = Date.now();
+        const outTokens = usage?.completion_tokens ?? 0;
+        const genMs = Math.max(tDone - (tFirst || tHeaders), 1);
+        const tps = ((outTokens / (genMs / 1000))).toFixed(1);
+        console.log(
+          `[${model}] headers=${tHeaders - t0}ms first-token=${tFirst ? tFirst - t0 : -1}ms total=${tDone - t0}ms finish=${finishReason} out=${outTokens}tok ${tps}tok/s`,
+        );
 
-      writeSSE(buildSSEChunk(chatId, created, model, {}, finishReason));
-      sseWritable.write(`data: [DONE]\n\n`);
-      await writer.close();
+        writeSSE(buildSSEChunk(chatId, created, model, {}, finishReason));
+        sseWritable.write(`data: [DONE]\n\n`);
+      }
+
+      if (!streamClosed) {
+        streamClosed = true;
+        try {
+          await writer.close();
+        } catch {
+          // Stream already closed/errored
+        }
+      }
+      void upstream.body?.cancel().catch(() => {});
     })();
 
     return new Response(readable, {
