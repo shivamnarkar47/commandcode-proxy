@@ -12,6 +12,7 @@ import {
   openaiToolsToAlpha,
   readNdjsonLines,
   mapFinish,
+  normalizeFinishReason,
   sseChunk,
   buildSSEChunk,
   parseAlphaUsage,
@@ -273,17 +274,12 @@ async function handleChatCompletions(req: Request): Promise<Response> {
   };
   const toolIndex = (id: string) => toolOrder.indexOf(id);
 
-  // For non-streaming, collect everything
-  const sseChunks: string[] = [];
-
-  const writeSSE = (chunk: Parameters<typeof sseChunk>[1]) => {
-    const data = `data: ${JSON.stringify(chunk)}\n\n`;
-    if (wantStream) sseWritable.write(data);
-    else sseChunks.push(data);
+  const sseWritable = {
+    write: (_s: string) => {}, // placeholder, replaced below for streaming
   };
 
-  const sseWritable = {
-    write: (_s: string) => {}, // placeholder, replaced below
+  const writeSSE = (chunk: Parameters<typeof sseChunk>[1]) => {
+    sseWritable.write(`data: ${JSON.stringify(chunk)}\n\n`);
   };
 
   if (wantStream) {
@@ -415,6 +411,7 @@ async function handleChatCompletions(req: Request): Promise<Response> {
         // Client gone — just log and clean up
         console.log(`[${model}] client disconnected, aborting upstream`);
       } else {
+        finishReason = normalizeFinishReason(finishReason, toolOrder.length);
         const tDone = Date.now();
         const outTokens = usage?.completion_tokens ?? 0;
         const genMs = Math.max(tDone - (tFirst || tHeaders), 1);
@@ -488,7 +485,7 @@ async function handleChatCompletions(req: Request): Promise<Response> {
           else if ("finish_reason" in ev && ev.finish_reason) finishReason = mapFinish(ev.finish_reason);
           if ("usage" in ev && ev.usage) {
             usage = parseAlphaUsage(ev.usage);
-          } else if ("totalUsage" in ev && "totalUsage" in ev && ev.totalUsage) {
+          } else if ("totalUsage" in ev && ev.totalUsage) {
             const u = ev.totalUsage;
             usage = {
               prompt_tokens: u.inputTokens ?? 0,
@@ -513,6 +510,7 @@ async function handleChatCompletions(req: Request): Promise<Response> {
     const outTokens = usage?.completion_tokens ?? 0;
     const genMs = Math.max(tDone - (tFirst || tHeaders), 1);
     const tps = ((outTokens / (genMs / 1000))).toFixed(1);
+    finishReason = normalizeFinishReason(finishReason, toolOrder.length);
     console.log(
       `[${model}] headers=${tHeaders - t0}ms first-token=${tFirst ? tFirst - t0 : -1}ms total=${tDone - t0}ms finish=${finishReason} out=${outTokens}tok ${tps}tok/s`,
     );

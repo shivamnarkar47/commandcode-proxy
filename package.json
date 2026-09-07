@@ -9,6 +9,7 @@
     "stop": "bun run src/proxy.ts --stop",
     "restart": "bun run src/proxy.ts --stop && bun run src/proxy.ts --daemon",
     "status": "bun run src/proxy.ts --status",
+    "test": "bun test",
     "uninstall": "bun run scripts/uninstall.ts",
     "typecheck": "tsc --noEmit"
   },
