@@ -1,8 +1,8 @@
 # install.ps1 — Install commandcode-proxy for Windows
-# Usage: irm https://github.com/snarkar-aiq/commandcode-proxy/raw/main/install.ps1 | iex
+# Usage: irm https://github.com/shivamnarkar47/commandcode-proxy/raw/main/install.ps1 | iex
 $ErrorActionPreference = "Stop"
 
-$RepoUrl = "https://github.com/snarkar-aiq/commandcode-proxy.git"
+$RepoUrl = "https://github.com/shivamnarkar47/commandcode-proxy.git"
 $InstallDir = "$env:USERPROFILE\.config\opencode\commandcode-proxy"
 
 Write-Host "[install] Checking for bun..." -ForegroundColor Cyan

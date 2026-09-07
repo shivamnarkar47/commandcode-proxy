@@ -18,13 +18,13 @@ Always streams upstream; buffers when downstream asks `stream:false`.
 ### Mac / Linux
 
 ```sh
-curl -fsSL https://github.com/snarkar-aiq/commandcode-proxy/raw/main/install.sh | bash
+curl -fsSL https://github.com/shivamnarkar47/commandcode-proxy/raw/main/install.sh | bash
 ```
 
 Or manually:
 
 ```sh
-git clone https://github.com/snarkar-aiq/commandcode-proxy.git ~/.config/opencode/commandcode-proxy
+git clone https://github.com/shivamnarkar47/commandcode-proxy.git ~/.config/opencode/commandcode-proxy
 cd ~/.config/opencode/commandcode-proxy
 bun install
 bun run src/setup.ts
@@ -33,13 +33,13 @@ bun run src/setup.ts
 ### Windows
 
 ```ps1
-irm https://github.com/snarkar-aiq/commandcode-proxy/raw/main/install.ps1 | iex
+irm https://github.com/shivamnarkar47/commandcode-proxy/raw/main/install.ps1 | iex
 ```
 
 Or manually:
 
 ```powershell
-git clone https://github.com/snarkar-aiq/commandcode-proxy.git $env:USERPROFILE\.config\opencode\commandcode-proxy
+git clone https://github.com/shivamnarkar47/commandcode-proxy.git $env:USERPROFILE\.config\opencode\commandcode-proxy
 cd $env:USERPROFILE\.config\opencode\commandcode-proxy
 bun install
 bun run src/setup.ts

@@ -50,17 +50,16 @@ async function readJsonSafe(p: string): Promise<Record<string, unknown> | null> 
   }
 }
 
-async function run(cmd: string): Promise<void> {
+async function run(cmd: string[]): Promise<void> {
   try {
-    const parts = cmd.split(" ");
     const proc = Bun.spawn({
-      cmd: parts,
+      cmd,
       stdout: "inherit",
       stderr: "inherit",
     });
     await proc.exited;
   } catch (e) {
-    warn(`command failed: ${cmd}\n  ${(e as Error).message}`);
+    warn(`command failed: ${cmd.join(" ")}\n  ${(e as Error).message}`);
   }
 }
 
@@ -76,9 +75,10 @@ async function isPortOpen(port: string): Promise<boolean> {
 }
 
 // --- provider config ---
-// NOTE: this emits the OpenCode v1 schema (top-level `provider` key, singular).
-// OpenCode v1 silently drops a plural `providers` block, and it only recognizes
-// OpenAI-compatible providers when `npm` is "@ai-sdk/openai-compatible".
+// NOTE: emits the OpenCode v1/v2 schema (singular top-level `provider` key).
+// OpenCode v1 silently drops a plural `providers` block and v2 rejects it as
+// malformed; v1 only recognizes OpenAI-compatible providers when `npm` is
+// "@ai-sdk/openai-compatible".
 interface ProviderConfig {
   name: string;
   npm: string;
@@ -87,7 +87,7 @@ interface ProviderConfig {
   models: Record<string, unknown>;
 }
 
-function buildProviderConfig(hasKey: boolean): ProviderConfig {
+export function buildProviderConfig(hasKey: boolean): ProviderConfig {
   const cfg: ProviderConfig = {
     name: "CommandCode Go (via local proxy)",
     npm: "@ai-sdk/openai-compatible",
@@ -161,8 +161,8 @@ Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 WantedBy=default.target
 `;
   await Bun.write(serviceFile, unit);
-  await run("systemctl --user daemon-reload");
-  await run("systemctl --user enable --now commandcode-proxy");
+  await run(["systemctl", "--user", "daemon-reload"]);
+  await run(["systemctl", "--user", "enable", "--now", "commandcode-proxy"]);
   log("systemd user service installed and started");
 }
 
@@ -196,7 +196,8 @@ async function installLaunchd(): Promise<void> {
 </plist>
 `;
   await Bun.write(plistFile, plist);
-  await run(`launchctl unload ${plistFile} 2>/dev/null; launchctl load ${plistFile}`);
+  await run(["launchctl", "unload", plistFile]);
+  await run(["launchctl", "load", plistFile]);
   log("launchd agent installed and started");
 }
 
@@ -205,7 +206,7 @@ async function installWindowsTask(): Promise<void> {
   const args = `run "${PROXY_FILE}" --port ${PORT}`;
 
   try {
-    await run(`schtasks /Delete /TN ${taskName} /F 2>nul`);
+    await run(["schtasks", "/Delete", "/TN", taskName, "/F"]);
   } catch {
     /* ignore */
   }
@@ -245,37 +246,204 @@ async function installWindowsTask(): Promise<void> {
   </Actions>
 </Task>`;
   await Bun.write(xmlPath, xml);
-  await run(`schtasks /Create /TN ${taskName} /XML ${xmlPath} /F`);
-  await run(`schtasks /Run /TN ${taskName}`);
+  await run(["schtasks", "/Create", "/TN", taskName, "/XML", xmlPath, "/F"]);
+  await run(["schtasks", "/Run", "/TN", taskName]);
   rmSync(xmlPath, { force: true });
   log("Windows scheduled task installed and started");
 }
 
 async function uninstallService(): Promise<void> {
   if (IS_LINUX) {
-    await run("systemctl --user disable --now commandcode-proxy 2>/dev/null");
+    await run(["systemctl", "--user", "disable", "--now", "commandcode-proxy"]);
     rmSync(path.join(os.homedir(), ".config", "systemd", "user", "commandcode-proxy.service"), { force: true });
-    await run("systemctl --user daemon-reload");
+    await run(["systemctl", "--user", "daemon-reload"]);
   } else if (IS_MAC) {
     const f = path.join(os.homedir(), "Library", "LaunchAgents", "ai.commandcode.proxy.plist");
-    await run(`launchctl unload ${f} 2>/dev/null`);
+    await run(["launchctl", "unload", f]);
     rmSync(f, { force: true });
   } else if (IS_WIN) {
-    await run("schtasks /Delete /TN CommandCodeProxy /F 2>nul");
+    await run(["schtasks", "/Delete", "/TN", "CommandCodeProxy", "/F"]);
   }
   log("service uninstalled");
 }
 
 // --- opencode.json merge ---
+export function stripJsonComments(text: string): string {
+  let out = "";
+  let inStr: string | null = null;
+  let inLineComment = false;
+  let inBlockComment = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    const next = text[i + 1] ?? "";
+    if (inLineComment) {
+      if (c === "\n") {
+        inLineComment = false;
+        out += c;
+      }
+      continue;
+    }
+    if (inBlockComment) {
+      if (c === "*" && next === "/") {
+        inBlockComment = false;
+        i++;
+      } else if (c === "\n") {
+        out += c;
+      }
+      continue;
+    }
+    if (inStr) {
+      out += c;
+      if (c === "\\") {
+        out += next;
+        i++;
+      } else if (c === inStr) {
+        inStr = null;
+      }
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      inStr = c;
+      out += c;
+    } else if (c === "/" && next === "/") {
+      inLineComment = true;
+      i++;
+    } else if (c === "/" && next === "*") {
+      inBlockComment = true;
+      i++;
+    } else {
+      out += c;
+    }
+  }
+  return out;
+}
+
+// Find the range of `"key": { ... }` starting search at fromIdx, string/comment aware.
+// Returns [start, stop) where start is at the opening quote and stop is just past `}`.
+export function findKeyBlockRange(text: string, key: string, fromIdx = 0): [number, number] | null {
+  const keyRe = new RegExp(`"${key}"\\s*:\\s*\\{`, "g");
+  keyRe.lastIndex = fromIdx;
+  const m = keyRe.exec(text);
+  if (!m) return null;
+  let i = m.index + m[0].length;
+  let depth = 1;
+  let inStr: string | null = null;
+  let inLineComment = false;
+  let inBlockComment = false;
+  for (; i < text.length; i++) {
+    const c = text[i]!;
+    const next = text[i + 1] ?? "";
+    if (inLineComment) {
+      if (c === "\n") inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      if (c === "*" && next === "/") {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (inStr) {
+      if (c === "\\") i++;
+      else if (c === inStr) inStr = null;
+      continue;
+    }
+    if (c === '"' || c === "'") inStr = c;
+    else if (c === "/" && next === "/") {
+      inLineComment = true;
+      i++;
+    } else if (c === "/" && next === "*") {
+      inBlockComment = true;
+      i++;
+    } else if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) return [m.index, i + 1];
+    }
+  }
+  return null;
+}
+
+export function hasComments(text: string): boolean {
+  let inStr: string | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    const next = text[i + 1] ?? "";
+    if (inStr) {
+      if (c === "\\") i++;
+      else if (c === inStr) inStr = null;
+      continue;
+    }
+    if (c === '"' || c === "'") inStr = c;
+    else if (c === "/" && (next === "/" || next === "*")) return true;
+  }
+  return false;
+}
+
+// Surgical JSONC merge: replace/insert only the commandcode provider block,
+// preserving comments and formatting elsewhere. Returns null on failure.
+export function mergeProviderJsonc(raw: string, providerSnippet: string): string | null {
+  const providersRange = findKeyBlockRange(raw, "provider");
+  if (!providersRange) {
+    // No providers block: insert before final closing brace of root object.
+    const stripped = stripJsonComments(raw).trim();
+    if (!stripped.endsWith("}")) return null;
+    const closeIdx = raw.lastIndexOf("}");
+    if (closeIdx < 0) return null;
+    const before = raw.slice(0, closeIdx).trimEnd();
+    const needsComma = !before.endsWith("{") && before.length > 1;
+    const after = raw.slice(closeIdx);
+    return `${before}${needsComma ? "," : ""}\n  "provider": {\n    ${providerSnippet}\n  }\n${after}`;
+  }
+  const [pStart, pStop] = providersRange;
+  const existing = findKeyBlockRange(raw, "commandcode", pStart);
+  if (existing && existing[0] < pStop) {
+    return raw.slice(0, existing[0]) + providerSnippet + raw.slice(existing[1]);
+  }
+  // Insert into existing providers object.
+  const inner = raw.slice(pStart, pStop);
+  const openBrace = inner.indexOf("{");
+  const innerBody = inner.slice(openBrace + 1, inner.length - 1);
+  if (stripJsonComments(innerBody).trim() === "") {
+    return `${raw.slice(0, pStart)}"provider": {\n    ${providerSnippet}\n  }${raw.slice(pStop)}`;
+  }
+  const insertAt = pStop - 1;
+  const beforeInsert = raw.slice(0, insertAt).trimEnd();
+  const needsComma = !beforeInsert.endsWith("{") && !beforeInsert.endsWith(",");
+  return `${beforeInsert}${needsComma ? "," : ""}\n    ${providerSnippet}\n  ${raw.slice(insertAt)}`;
+}
+
 async function ensureOpencodeConfig(hasKey: boolean): Promise<void> {
   const cfgPath = opencodeConfigFile();
+  const providerCfg = buildProviderConfig(hasKey);
+  const snippetBody = JSON.stringify(providerCfg, null, 2)
+    .split("\n")
+    .map((line, i) => (i === 0 ? line : `    ${line}`))
+    .join("\n");
+  const snippet = `"commandcode": ${snippetBody}`;
+
+  if (existsSync(cfgPath)) {
+    const raw = await Bun.file(cfgPath).text();
+    const isJsonc = cfgPath.endsWith(".jsonc") || hasComments(raw);
+    if (isJsonc) {
+      const merged = mergeProviderJsonc(raw, snippet);
+      if (merged !== null) {
+        await Bun.write(cfgPath, merged);
+        log(`opencode config updated at ${cfgPath} (comments preserved)`);
+        return;
+      }
+      warn(`could not safely edit ${cfgPath} — leaving comments intact; add the commandcode provider manually`);
+      return;
+    }
+  }
+
   const cfg: Record<string, unknown> =
     (await readJsonSafe(cfgPath)) ?? { $schema: "https://opencode.ai/config.json" };
 
-  // OpenCode v1 uses the singular `provider` key. (v0 used plural `providers`, which v1 omits.)
   const providers: Record<string, unknown> =
     (cfg.provider as Record<string, unknown> | undefined) ?? {};
-  providers.commandcode = buildProviderConfig(hasKey);
+  providers.commandcode = providerCfg;
   cfg.provider = providers;
 
   await Bun.write(cfgPath, JSON.stringify(cfg, null, 2));
@@ -371,7 +539,9 @@ async function main(): Promise<void> {
   log("done. restart OpenCode or press F5 to reload config.");
 }
 
-main().catch((e: Error) => {
-  err(e.message);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((e: Error) => {
+    err(e.message);
+    process.exit(1);
+  });
+}

@@ -162,7 +162,10 @@ export async function* readNdjsonLines(stream: ReadableStream<Uint8Array>): Asyn
     if (value) buf += decoder.decode(value, { stream: true });
     if (done) {
       buf += decoder.decode();
-      if (buf.trim()) yield buf;
+      for (const part of buf.split("\n")) {
+        const line = part.trim();
+        if (line) yield line;
+      }
       break;
     }
     let idx;
@@ -178,6 +181,14 @@ export function mapFinish(reason: string | undefined): "stop" | "length" | "tool
   if (reason === "tool-calls" || reason === "tool_calls") return "tool_calls";
   if (reason === "length") return "length";
   return "stop";
+}
+
+export function normalizeFinishReason(
+  reason: "stop" | "length" | "tool_calls",
+  toolCallCount: number,
+): "stop" | "length" | "tool_calls" {
+  if (reason === "stop" && toolCallCount > 0) return "tool_calls";
+  return reason;
 }
 
 export function buildSSEChunk(
