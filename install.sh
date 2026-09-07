@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # install.sh — Install commandcode-proxy for Mac/Linux
-# Usage: curl -fsSL https://github.com/snarkar-aiq/commandcode-proxy/raw/main/install.sh | bash
+# Usage: curl -fsSL https://github.com/shivamnarkar47/commandcode-proxy/raw/main/install.sh | bash
 set -euo pipefail
 
-REPO_URL="https://github.com/snarkar-aiq/commandcode-proxy.git"
+REPO_URL="https://github.com/shivamnarkar47/commandcode-proxy.git"
 INSTALL_DIR="$HOME/.config/opencode/commandcode-proxy"
 
 echo "[install] Checking for bun..."
