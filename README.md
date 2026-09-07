@@ -122,7 +122,9 @@ Run with `bun` from PowerShell/CMD.
 
 ## opencode.json
 
-Set `providers.commandcode.settings.baseURL` to `http://127.0.0.1:18731/v1`. Models carry explicit `modelID` (canonical id sent upstream as `params.model`).
+Set `provider.commandcode.options.baseURL` to `http://127.0.0.1:18731/v1`. Models carry an explicit `id` (canonical id sent upstream as `params.model`).
+
+> **v1 & v2 compatible.** Use the **singular** `provider` top-level key with `npm: "@ai-sdk/openai-compatible"`. A plural `providers` block is silently ignored by OpenCode v1 and rejected as malformed by opencode2 / v2 — this is the most common cause of models not appearing. `thinking.budgetTokens` is camelCase.
 
 Two template files are included for reference:
 
@@ -131,7 +133,7 @@ Two template files are included for reference:
 | `opencode.json` | You want a plain JSON config (no comments) |
 | `opencode.jsonc` | You want a JSONC config with inline documentation |
 
-Copy the `providers.commandcode` block from either file into your `~/.config/opencode/opencode.json` (or `opencode.jsonc`), then restart OpenCode or press F5 to reload.
+Copy the `provider.commandcode` block from either file into your `~/.config/opencode/opencode.json` (or `opencode.jsonc`), then restart OpenCode (or press F5 to reload; for opencode2 restart its background service with `opencode2 service restart`).
 
 ## Thinking / reasoning params
 
@@ -159,25 +161,25 @@ Upstream emits `reasoning-delta` NDJSON events; the proxy accumulates them into 
 
 ## Variants in opencode.json
 
-To select thinking variants from OpenCode's UI (`/models` → pick variant), define them under each model's `variants` array. Variant `settings` are merged into the request body and forwarded by the proxy:
+To select thinking variants from OpenCode's UI (`/models` → pick variant), define them under each model's `variants` object. Variant values are merged into the request body and forwarded by the proxy:
 
 ```jsonc
 {
-  "providers": {
+  "provider": {
     "commandcode": {
       "models": {
         "deepseek/deepseek-v4-flash": {
-          "variants": [
-            { "id": "low", "settings": { "reasoningEffort": "low" } },
-            { "id": "medium", "settings": { "reasoningEffort": "medium" } },
-            { "id": "high", "settings": { "reasoningEffort": "high" } },
-            { "id": "max", "settings": { "reasoningEffort": "high", "thinking": { "type": "enabled", "budget_tokens": 16000 } } }
-          ]
+          "variants": {
+            "low": { "reasoningEffort": "low" },
+            "medium": { "reasoningEffort": "medium" },
+            "high": { "reasoningEffort": "high" },
+            "max": { "reasoningEffort": "high", "thinking": { "type": "enabled", "budgetTokens": 16000 } }
+          }
         },
         "meituan/LongCat-2.0:free": {
-          "variants": [
-            { "id": "think", "settings": { "thinking": { "type": "enabled", "budget_tokens": 8000 } } }
-          ]
+          "variants": {
+            "think": { "thinking": { "type": "enabled", "budgetTokens": 8000 } }
+          }
         }
       }
     }

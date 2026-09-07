@@ -1,7 +1,16 @@
 // opencode.jsonc — Template configuration for commandcode-proxy
 //
-// Copy the `providers.commandcode` block into your ~/.config/opencode/opencode.json
+// Copy the `provider.commandcode` block into your ~/.config/opencode/opencode.json
 // or opencode.jsonc, then restart OpenCode (or press F5 to reload).
+//
+// IMPORTANT (OpenCode v1 AND v2):
+//   * Use the SINGULAR top-level key `provider`. A plural `providers` block is
+//     silently ignored by OpenCode v1 and rejected as malformed by v2 — this is
+//     the #1 reason models don't show up.
+//   * `npm` must be "@ai-sdk/openai-compatible" (v1 only recognizes the
+//     OpenAI-compatible SDK adapter under that package name).
+//   * Model variant `thinking.budgetTokens` is camelCase (budget_tokens is not
+//     recognized).
 //
 // Key resolution order (no config needed if you've run /connect):
 //   1. COMMANDCODE_API_KEY env var
@@ -9,60 +18,58 @@
 //   3. ~/.local/share/opencode/auth.json → `commandcode` key
 //
 // If you DON'T want to rely on auth.json and prefer env var, uncomment:
-//   "settings": { "baseURL": "...", "env": ["COMMANDCODE_API_KEY"] }
+//   "env": ["COMMANDCODE_API_KEY"]
 
 {
   "$schema": "https://opencode.ai/config.json",
 
-  "providers": {
+  "provider": {
     "commandcode": {
       "name": "CommandCode Go (via local proxy)",
-      "package": "@opencode-ai/ai/providers/openai-compatible",
-      "settings": {
-        "baseURL": "http://127.0.0.1:18731/v1",
-        // Uncomment the line below to require env var instead of auth.json:
-        // "env": ["COMMANDCODE_API_KEY"]
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "http://127.0.0.1:18731/v1"
       },
       "models": {
         "deepseek/deepseek-v4-flash": {
-          "modelID": "deepseek/deepseek-v4-flash",
+          "id": "deepseek/deepseek-v4-flash",
           "name": "DeepSeek V4 Flash",
-          "variants": [
-            { "id": "low", "settings": { "reasoningEffort": "low" } },
-            { "id": "medium", "settings": { "reasoningEffort": "medium" } },
-            { "id": "high", "settings": { "reasoningEffort": "high" } },
-            { "id": "max", "settings": { "reasoningEffort": "high", "thinking": { "type": "enabled", "budget_tokens": 16000 } } }
-          ]
+          "variants": {
+            "low": { "reasoningEffort": "low" },
+            "medium": { "reasoningEffort": "medium" },
+            "high": { "reasoningEffort": "high" },
+            "max": { "reasoningEffort": "high", "thinking": { "type": "enabled", "budgetTokens": 16000 } }
+          }
         },
         "meituan/LongCat-2.0:free": {
-          "modelID": "meituan/LongCat-2.0:free",
+          "id": "meituan/LongCat-2.0:free",
           "name": "LongCat-2.0:Free",
-          "variants": [
-            { "id": "think", "settings": { "thinking": { "type": "enabled", "budget_tokens": 8000 } } }
-          ]
+          "variants": {
+            "think": { "thinking": { "type": "enabled", "budgetTokens": 8000 } }
+          }
         },
         "zai-org/glm-5.3-flash": {
-          "modelID": "zai-org/glm-5.3-flash",
+          "id": "zai-org/glm-5.3-flash",
           "name": "GLM-5.3-Flash",
-          "variants": [
-            { "id": "think", "settings": { "thinking": { "type": "enabled", "budget_tokens": 8000 } } }
-          ]
+          "variants": {
+            "think": { "thinking": { "type": "enabled", "budgetTokens": 8000 } }
+          }
         },
         "meta/muse-spark-1.3-contributor": {
-          "modelID": "meta/muse-spark-1.3-contributor",
+          "id": "meta/muse-spark-1.3-contributor",
           "name": "Muse Spark 1.3 Contributor",
-          "variants": [
-            { "id": "low", "settings": { "thinking": { "type": "enabled", "budget_tokens": 4000 } } },
-            { "id": "high", "settings": { "thinking": { "type": "enabled", "budget_tokens": 8000 } } },
-            { "id": "xhigh", "settings": { "thinking": { "type": "enabled", "budget_tokens": 16000 } } }
-          ]
+          "variants": {
+            "low": { "thinking": { "type": "enabled", "budgetTokens": 4000 } },
+            "high": { "thinking": { "type": "enabled", "budgetTokens": 8000 } },
+            "xhigh": { "thinking": { "type": "enabled", "budgetTokens": 16000 } }
+          }
         },
         "meta/muse-spark-1.2-contributor": {
-          "modelID": "meta/muse-spark-1.2-contributor",
+          "id": "meta/muse-spark-1.2-contributor",
           "name": "Muse Spark 1.2 Contributor",
-          "variants": [
-            { "id": "think", "settings": { "thinking": { "type": "enabled", "budget_tokens": 8000 } } }
-          ]
+          "variants": {
+            "think": { "thinking": { "type": "enabled", "budgetTokens": 8000 } }
+          }
         }
       }
     }

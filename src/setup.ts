@@ -76,63 +76,67 @@ async function isPortOpen(port: string): Promise<boolean> {
 }
 
 // --- provider config ---
+// NOTE: this emits the OpenCode v1 schema (top-level `provider` key, singular).
+// OpenCode v1 silently drops a plural `providers` block, and it only recognizes
+// OpenAI-compatible providers when `npm` is "@ai-sdk/openai-compatible".
 interface ProviderConfig {
   name: string;
-  package: string;
-  settings: { baseURL: string; env?: string[] };
+  npm: string;
+  env?: string[];
+  options: { baseURL: string };
   models: Record<string, unknown>;
 }
 
 function buildProviderConfig(hasKey: boolean): ProviderConfig {
   const cfg: ProviderConfig = {
     name: "CommandCode Go (via local proxy)",
-    package: "@opencode-ai/ai/providers/openai-compatible",
-    settings: { baseURL: `${PROXY_URL}/v1` },
+    npm: "@ai-sdk/openai-compatible",
+    options: { baseURL: `${PROXY_URL}/v1` },
     models: {
       "deepseek/deepseek-v4-flash": {
-        modelID: "deepseek/deepseek-v4-flash",
+        id: "deepseek/deepseek-v4-flash",
         name: "DeepSeek V4 Flash",
-        variants: [
-          { id: "low", settings: { reasoningEffort: "low" } },
-          { id: "medium", settings: { reasoningEffort: "medium" } },
-          { id: "high", settings: { reasoningEffort: "high" } },
-          { id: "max", settings: { reasoningEffort: "high", thinking: { type: "enabled", budget_tokens: 16000 } } },
-        ],
+        variants: {
+          low: { reasoningEffort: "low" },
+          medium: { reasoningEffort: "medium" },
+          high: { reasoningEffort: "high" },
+          max: { reasoningEffort: "high", thinking: { type: "enabled", budgetTokens: 16000 } },
+        },
       },
       "meituan/LongCat-2.0:free": {
-        modelID: "meituan/LongCat-2.0:free",
+        id: "meituan/LongCat-2.0:free",
         name: "LongCat-2.0:Free",
-        variants: [
-          { id: "think", settings: { thinking: { type: "enabled", budget_tokens: 8000 } } },
-        ],
+        variants: {
+          think: { thinking: { type: "enabled", budgetTokens: 8000 } },
+        },
       },
       "zai-org/glm-5.3-flash": {
-        modelID: "zai-org/glm-5.3-flash",
+        id: "zai-org/glm-5.3-flash",
         name: "GLM-5.3-Flash",
-        variants: [
-          { id: "think", settings: { thinking: { type: "enabled", budget_tokens: 8000 } } },
-        ],
+        variants: {
+          think: { thinking: { type: "enabled", budgetTokens: 8000 } },
+        },
       },
       "meta/muse-spark-1.3-contributor": {
-        modelID: "meta/muse-spark-1.3-contributor",
+        id: "meta/muse-spark-1.3-contributor",
         name: "Muse Spark 1.3 Contributor",
-        variants: [
-          { id: "low", settings: { thinking: { type: "enabled", budget_tokens: 4000 } } },
-          { id: "high", settings: { thinking: { type: "enabled", budget_tokens: 8000 } } },
-          { id: "xhigh", settings: { thinking: { type: "enabled", budget_tokens: 16000 } } },
-        ],
+        variants: {
+          low: { thinking: { type: "enabled", budgetTokens: 4000 } },
+          high: { thinking: { type: "enabled", budgetTokens: 8000 } },
+          xhigh: { thinking: { type: "enabled", budgetTokens: 16000 } },
+        },
       },
       "meta/muse-spark-1.2-contributor": {
-        modelID: "meta/muse-spark-1.2-contributor",
+        id: "meta/muse-spark-1.2-contributor",
         name: "Muse Spark 1.2 Contributor",
-        variants: [
-          { id: "think", settings: { thinking: { type: "enabled", budget_tokens: 8000 } } },
-        ],
+        variants: {
+          think: { thinking: { type: "enabled", budgetTokens: 8000 } },
+        },
       },
     },
   };
   if (!hasKey) {
-    cfg.settings.env = ["COMMANDCODE_API_KEY"];
+    cfg.env = ["COMMANDCODE_API_KEY"];
   }
   return cfg;
 }
@@ -268,10 +272,11 @@ async function ensureOpencodeConfig(hasKey: boolean): Promise<void> {
   const cfg: Record<string, unknown> =
     (await readJsonSafe(cfgPath)) ?? { $schema: "https://opencode.ai/config.json" };
 
+  // OpenCode v1 uses the singular `provider` key. (v0 used plural `providers`, which v1 omits.)
   const providers: Record<string, unknown> =
-    (cfg.providers as Record<string, unknown> | undefined) ?? {};
+    (cfg.provider as Record<string, unknown> | undefined) ?? {};
   providers.commandcode = buildProviderConfig(hasKey);
-  cfg.providers = providers;
+  cfg.provider = providers;
 
   await Bun.write(cfgPath, JSON.stringify(cfg, null, 2));
   log(`opencode.json updated at ${cfgPath}`);
