@@ -84,9 +84,9 @@ describe("buildProviderConfig (OpenCode v1/v2 schema)", () => {
   test("uses npm + options (v1/v2) instead of package + settings (v0)", () => {
     const cfg = buildProviderConfig(false);
     expect(cfg.npm).toBe("@ai-sdk/openai-compatible");
-    expect(cfg.package).toBeUndefined();
+    expect((cfg as unknown as Record<string, unknown>).package).toBeUndefined();
     expect(cfg.options.baseURL).toMatch(/:\/\/127\.0\.0\.1:18731/);
-    expect(cfg.settings).toBeUndefined();
+    expect((cfg as unknown as Record<string, unknown>).settings).toBeUndefined();
   });
 
   test("adds env for COMMANDCODE_API_KEY when no key is configured", () => {
