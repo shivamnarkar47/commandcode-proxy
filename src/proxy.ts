@@ -23,6 +23,7 @@ import type {
   NdJsonEvent,
   SSEDelta,
 } from "./types.js";
+import { warmUpstream } from "./warmup.js";
 
 // --- daemon/stop/status handling ---
 const PROJECT_ROOT = path.resolve(import.meta.dirname, "..");
@@ -214,6 +215,7 @@ async function handleChatCompletions(req: Request): Promise<Response> {
   const sessionId = req.headers.get("x-session-id") || crypto.randomUUID();
   const upstreamHeaders: Record<string, string> = {
     "content-type": "application/json",
+    connection: "keep-alive",
     authorization: `Bearer ${apiKey}`,
     "x-cli-environment": "production",
     "x-command-code-version": VERSION,
@@ -222,35 +224,33 @@ async function handleChatCompletions(req: Request): Promise<Response> {
   if (process.env.CMD_ZDR === "1") upstreamHeaders["x-cmd-zdr"] = "1";
 
   const t0 = Date.now();
-  let upstream: Response;
-  try {
-    upstream = await fetch(`${UPSTREAM}/alpha/generate`, {
-      method: "POST",
-      headers: upstreamHeaders,
-      body: JSON.stringify(upstreamBody),
-    });
-  } catch (e) {
-    return Response.json(
-      { error: { message: `Upstream unreachable: ${(e as Error).message}`, type: "upstream_error" } },
-      { status: 502 },
-    );
-  }
-  const tHeaders = Date.now();
+  let tHeaders = 0;
   let tFirst = 0;
 
-  if (!upstream.ok || !upstream.body) {
-    const text = await upstream.text().catch(() => "");
-    let parsed: unknown;
+  // Fire upstream now, resolve later: the streaming path awaits inside the
+  // background task so the downstream HTTP 200 goes out immediately.
+  const upstreamPromise: Promise<Response> = fetch(`${UPSTREAM}/alpha/generate`, {
+    method: "POST",
+    headers: upstreamHeaders,
+    body: JSON.stringify(upstreamBody),
+  });
+
+  // Shared resolve step. Throws a plain Error on network failure or non-2xx
+  // so both callers use one error path.
+  const awaitUpstream = async (): Promise<Response> => {
+    let upstream: Response;
     try {
-      parsed = JSON.parse(text);
-    } catch {
-      /* keep raw */
+      upstream = await upstreamPromise;
+    } catch (e) {
+      throw new Error(`Upstream unreachable: ${(e as Error).message}`);
     }
-    return Response.json(
-      parsed || { error: { message: text.slice(0, 2000) || `Upstream ${upstream.status}`, type: "upstream_error" } },
-      { status: upstream.status },
-    );
-  }
+    tHeaders = Date.now();
+    if (!upstream.ok || !upstream.body) {
+      const text = await upstream.text().catch(() => "");
+      throw new Error(text.slice(0, 2000) || `Upstream ${upstream.status}`);
+    }
+    return upstream;
+  };
 
   const chatId = `chatcmpl-${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
   const created = Math.floor(Date.now() / 1000);
@@ -288,18 +288,48 @@ async function handleChatCompletions(req: Request): Promise<Response> {
     const writer = writable.getWriter();
     const encoder = new TextEncoder();
     let streamClosed = false;
+    let liveUpstream: Response | null = null;
 
     sseWritable.write = (s: string) => {
       if (streamClosed) return;
       void writer.write(encoder.encode(s)).catch(() => {
         // Client disconnected — stop reading upstream
         streamClosed = true;
-        void upstream.body?.cancel().catch(() => {});
+        void liveUpstream?.body?.cancel().catch(() => {});
       });
     };
 
+    // Flush headers now: enqueue an SSE comment so Bun sends the head
+    // immediately instead of buffering until the first token. Fire-and-forget:
+    // awaiting here would deadlock (no reader until Response is returned).
+    void writer.write(encoder.encode(": ping\n\n")).catch(() => {
+      streamClosed = true;
+    });
+
     // Start processing in background
     void (async () => {
+      let upstream: Response;
+      try {
+        upstream = await awaitUpstream();
+        liveUpstream = upstream;
+      } catch (e) {
+        if (!streamClosed) {
+          try {
+            const delta: SSEDelta = { content: `\n\n[upstream error: ${(e as Error).message}]` };
+            writeSSE(buildSSEChunk(chatId, created, model, delta, "stop"));
+            sseWritable.write(`data: [DONE]\n\n`);
+          } catch {
+            // Client disconnected while writing error
+          }
+          streamClosed = true;
+          try {
+            await writer.close();
+          } catch {
+            // Stream already closed/errored
+          }
+        }
+        return;
+      }
       try {
         for await (const line of readNdjsonLines(upstream.body!)) {
           if (streamClosed) break;
@@ -445,9 +475,18 @@ async function handleChatCompletions(req: Request): Promise<Response> {
       },
     });
   } else {
-    // Non-streaming: process everything, return single JSON
+    // Non-streaming: resolve upstream first, then buffer everything.
+    let upstream: Response;
     try {
-      for await (const line of readNdjsonLines(upstream.body)) {
+      upstream = await awaitUpstream();
+    } catch (e) {
+      return Response.json(
+        { error: { message: (e as Error).message, type: "upstream_error" } },
+        { status: 502 },
+      );
+    }
+    try {
+      for await (const line of readNdjsonLines(upstream.body!)) {
         let ev: NdJsonEvent;
         try {
           ev = JSON.parse(line) as NdJsonEvent;
@@ -583,3 +622,17 @@ console.log(`commandcode-proxy on http://127.0.0.1:${PORT} -> ${UPSTREAM}/alpha/
 const found = process.env.COMMANDCODE_API_KEY ? "env" : (await keyFromAuthFile())?.source || "none";
 console.log(`key source: ${found}`);
 if (found === "none") console.log("WARN: no key in env or auth.json; requests will 401 until /connect runs.");
+
+// Warm the upstream TLS socket so the first user turn skips the handshake.
+{
+  const fileKey = await keyFromAuthFile();
+  const key = process.env.COMMANDCODE_API_KEY ?? fileKey?.key ?? "";
+  if (key) {
+    const warm = await warmUpstream(UPSTREAM, key, VERSION);
+    console.log(
+      warm.ok ? `upstream warm: ${warm.ms}ms` : `upstream warm failed (${warm.error ?? "non-2xx"}), first turn pays TLS`,
+    );
+  } else {
+    console.log("upstream warm skipped: no key yet");
+  }
+}
