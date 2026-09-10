@@ -133,6 +133,18 @@
               }
             }
           }
+        },
+        "ling-3.0-flash-sante:free": {
+          "id": "ling-3.0-flash-sante:free",
+          "name": "Ling 3.0 Flash Sante:Free",
+          "variants": {
+            "think": {
+              "thinking": {
+                "type": "enabled",
+                "budgetTokens": 8000
+              }
+            }
+          }
         }
       }
     },
@@ -260,6 +272,18 @@
         "meta/muse-spark-1.2-contributor": {
           "id": "meta/muse-spark-1.2-contributor",
           "name": "Muse Spark 1.2 Contributor",
+          "variants": {
+            "think": {
+              "thinking": {
+                "type": "enabled",
+                "budgetTokens": 8000
+              }
+            }
+          }
+        },
+        "ling-3.0-flash-sante:free": {
+          "id": "ling-3.0-flash-sante:free",
+          "name": "Ling 3.0 Flash Sante:Free",
           "variants": {
             "think": {
               "thinking": {
