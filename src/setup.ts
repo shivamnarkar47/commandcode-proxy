@@ -103,6 +103,16 @@ export function buildProviderConfig(hasKey: boolean): ProviderConfig {
           max: { reasoningEffort: "high", thinking: { type: "enabled", budgetTokens: 16000 } },
         },
       },
+      "deepseek/deepseek-v4.1-flash": {
+        id: "deepseek/deepseek-v4.1-flash",
+        name: "DeepSeek V4.1 Flash",
+        variants: {
+          low: { reasoningEffort: "low" },
+          medium: { reasoningEffort: "medium" },
+          high: { reasoningEffort: "high" },
+          max: { reasoningEffort: "high", thinking: { type: "enabled", budgetTokens: 16000 } },
+        },
+      },
       "meituan/LongCat-2.0:free": {
         id: "meituan/LongCat-2.0:free",
         name: "LongCat-2.0:Free",
